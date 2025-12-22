@@ -3,27 +3,25 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      java: corretto17 # Java 17 environment
+      java: corretto17  # AWS ka Java 17 version
       
   pre_build:
     commands:
-      - echo Logging in to Amazon ECR...
-      - aws --version
-      # Docker ko AWS ECR se connect karna
-      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <YOUR_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com
-      
+      - echo "Maven version check kar rahe hain..."
+      - mvn -version
+
   build:
     commands:
-      - echo Build started on `date`
-      - echo Building the Java project...
-      - mvn clean package
-      
-      - echo Building the Docker image...
-      - docker build -t my-demo-app-repo .
-      - docker tag my-demo-app-repo:latest <YOUR_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/my-demo-app-repo:latest
+      - echo "Build process start ho raha hai..."
+      - echo "Running Tests and Packaging..."
+      - mvn clean package  # Ye command Test bhi karegi aur JAR bhi banayegi
 
   post_build:
     commands:
-      - echo Build completed on `date`
-      - echo Pushing the Docker image...
-      - docker push <YOUR_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/my-demo-app-repo:latest
+      - echo "Build complete successfully on `date`"
+
+# Artifacts section batata hai ki build hone ke baad kya save karna hai
+artifacts:
+  files:
+    - target/*.jar    # Sirf JAR file ko save karega
+  discard-paths: yes  # Folder structure hata kar seedha file save karega
