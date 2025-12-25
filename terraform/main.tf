@@ -2,13 +2,13 @@ provider "aws" {
   region = "ap-south-1"
 }
 
-# 1. ECR Repository (Store Room)
+# --- 1. ECR Repository ---
 resource "aws_ecr_repository" "my_repo" {
-  name = "uday-ecr-terraform"  # Naya naam diya taaki conflict na ho
+  name         = "uday-ecr"
   force_delete = true
 }
 
-# 2. IAM Role for CodeBuild (Builder ke liye permission)
+# --- 2. IAM Role for CodeBuild ---
 resource "aws_iam_role" "codebuild_role" {
   name = "terraform-codebuild-role"
 
@@ -22,42 +22,47 @@ resource "aws_iam_role" "codebuild_role" {
   })
 }
 
-# CodeBuild ko ECR PowerUser permission dena
-resource "aws_iam_role_policy_attachment" "codebuild_attach" {
+# Permissions
+resource "aws_iam_role_policy_attachment" "codebuild_ecr_attach" {
   role       = aws_iam_role.codebuild_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser"
 }
 
-# CodeBuild ko Logs ki permission dena (Zaruri hai)
-resource "aws_iam_role_policy_attachment" "codebuild_logs" {
+resource "aws_iam_role_policy_attachment" "codebuild_logs_attach" {
   role       = aws_iam_role.codebuild_role.name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 }
 
-# 3. CodeBuild Project (The Factory)
+# --- 3. CodeBuild Project ---
 resource "aws_codebuild_project" "my_project" {
   name          = "terraform-demo-project"
   service_role  = aws_iam_role.codebuild_role.arn
+  build_timeout = "5"
 
   artifacts {
     type = "NO_ARTIFACTS"
   }
 
   environment {
-    compute_type                = "BUILD_GENERAL1_SMALL"
-    image                       = "aws/codebuild/amazonlinux2-x86_64-standard:4.0"
-    type                        = "LINUX_CONTAINER"
-    privileged_mode             = true # Docker chalane ke liye zaruri hai
+    compute_type    = "BUILD_GENERAL1_SMALL"
+    image           = "aws/codebuild/amazonlinux2-x86_64-standard:4.0"
+    type            = "LINUX_CONTAINER"
+    privileged_mode = true
   }
 
   source {
     type            = "GITHUB"
-    location        = "https://github.com/uday077/gitmavendemoproject.git" # APNA URL YAHAN DALNA
+    location        = "https://github.com/uday077/terraformcodebuildproject.git"
     git_clone_depth = 1
+    
+    # 🔥 CRITICAL FIX: Isse Access Denied error nahi aayega
+    report_build_status = false
+    
+    buildspec = "buildspec.yml"
   }
 }
 
-# 4. IAM Role for EC2 (Server ke liye permission)
+# --- 4. IAM Role for EC2 ---
 resource "aws_iam_role" "ec2_role" {
   name = "terraform-ec2-role"
 
@@ -71,19 +76,17 @@ resource "aws_iam_role" "ec2_role" {
   })
 }
 
-# EC2 ko ECR ReadOnly permission dena
-resource "aws_iam_role_policy_attachment" "ec2_attach" {
+resource "aws_iam_role_policy_attachment" "ec2_ecr_attach" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
-# Instance Profile (Role ko EC2 se jodne ke liye)
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "terraform-ec2-profile"
   role = aws_iam_role.ec2_role.name
 }
 
-# 5. Security Group (Firewall)
+# --- 5. Security Group ---
 resource "aws_security_group" "web_sg" {
   name        = "terraform-web-sg"
   description = "Allow HTTP and SSH"
@@ -94,22 +97,18 @@ resource "aws_security_group" "web_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  
-  # Custom TCP 8080 (Agar directly access karna ho)
   ingress {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
   egress {
     from_port   = 0
     to_port     = 0
@@ -118,16 +117,15 @@ resource "aws_security_group" "web_sg" {
   }
 }
 
-# 6. EC2 Instance (Server with Auto-Install Script)
+# --- 6. EC2 Instance ---
 resource "aws_instance" "app_server" {
-  ami           = "ami-0dee22c13ea7a9a67" # Ubuntu 24.04 (ap-south-1 ke liye)
-  instance_type = "t2.micro"
-  key_name      = "my-key" # APNI KEY KA NAAM YAHAN LIKHEIN (Jo AWS me pehle se hai)
-  
+  ami           = "ami-0dee22c13ea7a9a67" # Ubuntu (ap-south-1)
+  instance_type = "t3.micro"              # Fix: t3.micro for free tier
+  key_name      = "uday"                  # Fix: Your key name
+
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
   vpc_security_group_ids = [aws_security_group.web_sg.id]
 
-  # Ye wahi script hai jo humne 'User Data' me dali thi
   user_data = <<-EOF
               #!/bin/bash
               apt update
@@ -142,7 +140,10 @@ resource "aws_instance" "app_server" {
   }
 }
 
-# 7. Output (IP Address print karega)
-output "server_public_ip" {
+# --- 7. Output ---
+output "server_ip" {
   value = aws_instance.app_server.public_ip
+}
+output "ecr_repo_url" {
+  value = aws_ecr_repository.my_repo.repository_url
 }
