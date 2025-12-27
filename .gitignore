@@ -1,4 +1,11 @@
-# .gitignore file me ye daal do
-*.tfstate
-*.tfstate.*
+# Ignore executables
+*.exe
+*.dll
+
+# Ignore Terraform temp files
 .terraform/
+*.tfstate
+*.tfstate.backup
+
+# Ignore Secret files
+terraform.tfvars
